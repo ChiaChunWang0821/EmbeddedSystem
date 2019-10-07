@@ -1,0 +1,4 @@
+"STARTUP.obj",
+"final.obj" 
+TO "final" 
+RAMSIZE(256) 

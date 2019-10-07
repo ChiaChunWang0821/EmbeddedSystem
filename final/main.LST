@@ -1,0 +1,52 @@
+C51 COMPILER V7.08   MAIN                                                                  06/13/2019 11:28:02 PAGE 1   
+
+
+C51 COMPILER V7.08, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE main.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          /*-----------------------------------------------
+   2            名稱：IIC協議 24c02存儲開機次數
+   3            論壇：www.doflye.net
+   4            編寫：shifang
+   5            修改：無
+   6            內容：每次開機，開機數值加1並存儲到24c02
+   7          ------------------------------------------------*/  
+   8          #include <reg52.h>                
+   9          #include "i2c.h"
+  10          #include "delay.h"
+  11          #include "display.h"
+  12          
+  13          
+  14          main()
+  15          {
+  16   1       unsigned char num=0;
+  17   1       Init_Timer0();
+  18   1       IRcvStr(0xae,50,&num,1);   //從24c02讀出數據                             
+  19   1       num++;                 
+  20   1       ISendStr(0xae,50,&num,1);  //寫入24c02 
+  21   1       DelayMs(10);
+  22   1       TempData[0]=dofly_DuanMa[num/100];    
+  23   1       TempData[1]=dofly_DuanMa[(num%100)/10];
+  24   1       TempData[2]=dofly_DuanMa[(num%100)%10];
+  25   1      
+  26   1        while(1)
+  27   1           {
+  28   2               }
+  29   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     85    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

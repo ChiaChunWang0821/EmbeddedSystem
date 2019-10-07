@@ -1,0 +1,526 @@
+C51 COMPILER V7.08   FINAL                                                                 06/18/2019 22:02:12 PAGE 1   
+
+
+C51 COMPILER V7.08, COMPILATION OF MODULE FINAL
+OBJECT MODULE PLACED IN final.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE final.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          /*-----------------------------------------------
+   2            名稱：LCD1602
+   3            論壇：www.doflye.net
+   4            編寫：shifang
+   5            日期：2009.5
+   6            修改：無
+   7            內容：通過標準程序動態顯示字符
+   8            引腳定義如下：1-VSS 2-VDD 3-V0 4-RS 5-R/W 6-E 7-14 DB0-DB7 15-BLA 16-BLK
+   9          ------------------------------------------------*/
+  10          #include<reg52.h> //包含頭文件，一般情況不需要改動，頭文件包含特殊功能寄存器的定義
+  11          #include<intrins.h>
+  12          
+  13          sbit RS = P2^4;   //定義端口 
+  14          sbit RW = P2^5;
+  15          sbit EN = P2^6;
+  16          
+  17          #define RS_CLR RS=0 
+  18          #define RS_SET RS=1
+  19          
+  20          #define RW_CLR RW=0 
+  21          #define RW_SET RW=1 
+  22          
+  23          #define EN_CLR EN=0
+  24          #define EN_SET EN=1
+  25          
+  26          #define DataPort P0
+  27          #define Limit    16 // 環形佇列
+  28          
+  29          sbit LED0 = P1^0;
+  30          sbit LED1 = P1^1;
+  31          sbit LED2 = P1^2;
+  32          sbit LED3 = P1^3;
+  33          sbit LED4 = P1^4;
+  34          sbit LED5 = P1^5;
+  35          sbit LED6 = P1^6;
+  36          sbit LED7 = P1^7;
+  37          #define ON 0
+  38          #define OFF 1
+  39          
+  40          sbit BOT0 = P0^0;
+  41          sbit BOT1 = P0^1;
+  42          sbit BOT2 = P0^2;
+  43          sbit BOT3 = P0^3;
+  44          sbit BOT4 = P0^4;
+  45          sbit BOT5 = P0^5;
+  46          sbit BOT6 = P0^6;
+  47          sbit BOT7 = P0^7;
+  48          
+  49          sbit SPK=P3^2;    //定義喇叭端口
+  50          unsigned char frq;
+  51          
+  52          unsigned char recbuf[Limit];
+  53          unsigned char head = 0;
+  54          unsigned char tail = 0;
+  55          
+C51 COMPILER V7.08   FINAL                                                                 06/18/2019 22:02:12 PAGE 2   
+
+  56          void InitUART  (void)
+  57          {
+  58   1      
+  59   1          SCON  = 0x50;                       // SCON: 模式 1, 8-bit UART, 使能接收  
+  60   1          TMOD |= 0x20;               // TMOD: timer 1, mode 2, 8-bit 重裝
+  61   1          TH1   = 0xFD;               // TH1:  重裝值 9600 波特率 晶振 11.0592MHz  
+  62   1          TR1   = 1;                  // TR1:  timer 1 打開                         
+  63   1          EA    = 1;                  //打開總中斷
+  64   1          ES    = 1;                  //打開串口中斷
+  65   1      }    
+  66          
+  67          
+  68          void SendByte(unsigned char dat)
+  69          {
+  70   1       SBUF = dat;
+  71   1       while(!TI);
+  72   1            TI = 0;
+  73   1      }
+  74          /*------------------------------------------------
+  75                              發送一個字符串
+  76          ------------------------------------------------*/
+  77          void SendStr(unsigned char *s)
+  78          {
+  79   1       while(*s!='\0')// \0 表示字符串結束標誌，通過檢測是否字符串末尾
+  80   1        {
+  81   2        SendByte(*s);
+  82   2        s++;
+  83   2        }
+  84   1      }
+  85          /*------------------------------------------------
+  86                               串口中斷程序
+  87          ------------------------------------------------*/
+  88          void UART_SER (void) interrupt 4 //串行中斷服務程序
+  89          {
+  90   1          unsigned char Temp;          //定義臨時變量 
+  91   1         
+  92   1         if(RI)                        //判斷是接收中斷產生
+  93   1           {
+  94   2                RI=0;                      //標誌位清零
+  95   2                Temp=SBUF;                 //讀入緩衝區的值
+  96   2                recbuf[head] = Temp;                  
+  97   2      
+  98   2            head++;
+  99   2            if (head == Limit)
+ 100   2                head = 0;                 
+ 101   2               }
+ 102   1       //  if(TI)                        //如果是發送標誌位，清零
+ 103   1       //    TI=0;
+ 104   1      } 
+ 105          
+ 106          /*------------------------------------------------
+ 107           uS延時函數，含有輸入參數 unsigned char t，無返回值
+ 108           unsigned char 是定義無符號字符變量，其值的範圍是
+ 109           0~255 這裡使用晶振12M，精確延時請使用彙編,大致延時
+ 110           長度如下 T=tx2+5 uS 
+ 111          ------------------------------------------------*/
+ 112          void DelayUs2x(unsigned char t)
+ 113          {   
+ 114   1       while(--t);
+ 115   1      }
+ 116          /*------------------------------------------------
+ 117           mS延時函數，含有輸入參數 unsigned char t，無返回值
+C51 COMPILER V7.08   FINAL                                                                 06/18/2019 22:02:12 PAGE 3   
+
+ 118           unsigned char 是定義無符號字符變量，其值的範圍是
+ 119           0~255 這裡使用晶振12M，精確延時請使用彙編
+ 120          ------------------------------------------------*/
+ 121          void DelayMs(unsigned char t)
+ 122          {
+ 123   1           
+ 124   1       while(t--)
+ 125   1       {
+ 126   2           //大致延時1mS
+ 127   2           DelayUs2x(245);
+ 128   2               DelayUs2x(245);
+ 129   2       }
+ 130   1      }
+ 131          /*------------------------------------------------
+ 132                        判忙函數
+ 133          ------------------------------------------------*/
+ 134           bit LCD_Check_Busy(void) 
+ 135           { 
+ 136   1       DataPort= 0xFF; 
+ 137   1       RS_CLR; 
+ 138   1       RW_SET; 
+ 139   1       EN_CLR; 
+ 140   1       _nop_(); 
+ 141   1       EN_SET;
+ 142   1       return (bit)(DataPort & 0x80);
+ 143   1       }
+ 144          /*------------------------------------------------
+ 145                        寫入命令函數
+ 146          ------------------------------------------------*/
+ 147           void LCD_Write_Com(unsigned char com) 
+ 148           {  
+ 149   1      // while(LCD_Check_Busy()); //忙則等待
+ 150   1       DelayMs(5);
+ 151   1       RS_CLR; 
+ 152   1       RW_CLR; 
+ 153   1       EN_SET; 
+ 154   1       DataPort= com; 
+ 155   1       _nop_(); 
+ 156   1       EN_CLR;
+ 157   1       }
+ 158          /*------------------------------------------------
+ 159                        寫入數據函數
+ 160          ------------------------------------------------*/
+ 161           void LCD_Write_Data(unsigned char Data) 
+ 162           { 
+ 163   1       //while(LCD_Check_Busy()); //忙則等待
+ 164   1       DelayMs(5);
+ 165   1       RS_SET; 
+ 166   1       RW_CLR; 
+ 167   1       EN_SET; 
+ 168   1       DataPort= Data; 
+ 169   1       _nop_();
+ 170   1       EN_CLR;
+ 171   1       }
+ 172          
+ 173          /*------------------------------------------------
+ 174                          清屏函數
+ 175          ------------------------------------------------*/
+ 176           void LCD_Clear(void) 
+ 177           { 
+ 178   1       LCD_Write_Com(0x01); 
+ 179   1       DelayMs(5);
+C51 COMPILER V7.08   FINAL                                                                 06/18/2019 22:02:12 PAGE 4   
+
+ 180   1       }
+ 181          /*------------------------------------------------
+ 182                        寫入字符串函數
+ 183          ------------------------------------------------*/
+ 184           void LCD_Write_String(unsigned char x,unsigned char y,unsigned char *s) 
+ 185           {     
+ 186   1       if (y == 0) 
+ 187   1              {     
+ 188   2               LCD_Write_Com(0x80 + x);     
+ 189   2              }
+ 190   1       else 
+ 191   1              {     
+ 192   2              LCD_Write_Com(0xC0 + x);     
+ 193   2              }        
+ 194   1       while (*s) 
+ 195   1              {     
+ 196   2       LCD_Write_Data( *s);     
+ 197   2       s ++;     
+ 198   2              }
+ 199   1       }
+ 200          /*------------------------------------------------
+ 201                        寫入字符函數
+ 202          ------------------------------------------------*/
+ 203           void LCD_Write_Char(unsigned char x,unsigned char y,unsigned char Data) 
+ 204           {     
+ 205   1       if (y == 0) 
+ 206   1              {     
+ 207   2              LCD_Write_Com(0x80 + x);     
+ 208   2              }    
+ 209   1       else 
+ 210   1              {     
+ 211   2              LCD_Write_Com(0xC0 + x);     
+ 212   2              }        
+ 213   1       LCD_Write_Data( Data);  
+ 214   1       }
+ 215          /*------------------------------------------------
+ 216                        初始化函數
+ 217          ------------------------------------------------*/
+ 218           void LCD_Init(void) 
+ 219           {
+ 220   1         LCD_Write_Com(0x38);    /*顯示模式設置*/ 
+ 221   1         DelayMs(5); 
+ 222   1         LCD_Write_Com(0x38); 
+ 223   1         DelayMs(5); 
+ 224   1         LCD_Write_Com(0x38); 
+ 225   1         DelayMs(5); 
+ 226   1         LCD_Write_Com(0x38);  
+ 227   1         LCD_Write_Com(0x08);    /*顯示關閉*/ 
+ 228   1         LCD_Write_Com(0x01);    /*顯示清屏*/ 
+ 229   1         LCD_Write_Com(0x06);    /*顯示光標移動設置*/ 
+ 230   1         DelayMs(5); 
+ 231   1         LCD_Write_Com(0x0C);    /*顯示開及光標設置*/
+ 232   1         }
+ 233             
+ 234          /*------------------------------------------------
+ 235                              定時器初始化子程序
+ 236          ------------------------------------------------*/
+ 237          void Init_Timer0(void)
+ 238          {
+ 239   1       TMOD |= 0x01;    //使用模式1，16位定時器，使用"|"符號可以在使用多個定時器時不受影響                 
+ 240   1       //TH0=0x00;          //給定初值
+ 241   1       //TL0=0x00;
+C51 COMPILER V7.08   FINAL                                                                 06/18/2019 22:02:12 PAGE 5   
+
+ 242   1       EA=1;            //總中斷打開
+ 243   1       ET0=1;           //定時器中斷打開
+ 244   1       TR0=1;           //定時器開關打開
+ 245   1      }
+ 246          
+ 247          /*------------------------------------------------
+ 248                           定時器中斷子程序
+ 249          ------------------------------------------------*/
+ 250          void Timer0_isr(void) interrupt 1 
+ 251          {
+ 252   1       TH0=0xfe;                //重新賦值 
+ 253   1       TL0=frq;         //低8位值在主程序中不斷累加
+ 254   1       
+ 255   1       SPK=!SPK;        //端口電平取反
+ 256   1      
+ 257   1      }
+ 258          
+ 259          /*------------------------------------------------
+ 260                              主函數
+ 261          ------------------------------------------------*/ 
+ 262          void main(void) 
+ 263          { 
+ 264   1              unsigned char i; 
+ 265   1              unsigned char flag = 0;
+ 266   1              unsigned int count = 0;
+ 267   1      
+ 268   1              InitUART();
+ 269   1      
+ 270   1              i=0;
+ 271   1              while (1) 
+ 272   1              {               
+ 273   2      
+ 274   2                      if (head == 1)
+ 275   2                    {
+ 276   3                    head = 0;
+ 277   3                    switch(recbuf[0] + 1)
+ 278   3                    {
+ 279   4      
+ 280   4                          case 1:LED0 = ON;
+ 281   4                                                         LED1 = OFF;
+ 282   4                                                         LED2 = OFF;
+ 283   4                                                         LED3 = OFF;
+ 284   4                                                         LED4 = OFF;
+ 285   4                                                         LED5 = OFF;
+ 286   4                                                         LED6 = OFF;
+ 287   4                                                         LED7 = OFF;
+ 288   4                                                         flag = 1;
+ 289   4                                 break;
+ 290   4                          case 2:LED0 = ON;
+ 291   4                                                     LED1 = ON;
+ 292   4                                                         LED2 = OFF;
+ 293   4                                                         LED3 = OFF;
+ 294   4                                                         LED4 = OFF;
+ 295   4                                                         LED5 = OFF;
+ 296   4                                                         LED6 = OFF;
+ 297   4                                                         LED7 = OFF;
+ 298   4                                                         flag = 0;
+ 299   4                                 break;
+ 300   4                          case 3:LED0 = ON;
+ 301   4                                                     LED1 = ON;
+ 302   4                                                         LED2 = ON;
+ 303   4                                                         LED3 = OFF;
+C51 COMPILER V7.08   FINAL                                                                 06/18/2019 22:02:12 PAGE 6   
+
+ 304   4                                                         LED4 = OFF;
+ 305   4                                                         LED5 = OFF;
+ 306   4                                                         LED6 = OFF;
+ 307   4                                                         LED7 = OFF;
+ 308   4                                                         flag = 0;
+ 309   4                                 break;
+ 310   4                          case 4:LED0 = ON;
+ 311   4                                                     LED1 = ON;
+ 312   4                                                         LED2 = ON;
+ 313   4                                                         LED3 = ON;
+ 314   4                                                         LED4 = OFF;
+ 315   4                                                         LED5 = OFF;
+ 316   4                                                         LED6 = OFF;
+ 317   4                                                         LED7 = OFF;
+ 318   4                                                         flag = 0;
+ 319   4                                 break;
+ 320   4                          case 5:LED0 = ON;
+ 321   4                                                     LED1 = ON;
+ 322   4                                                         LED2 = ON;
+ 323   4                                                         LED3 = ON;
+ 324   4                                                         LED4 = ON;
+ 325   4                                                         LED5 = OFF;
+ 326   4                                                         LED6 = OFF;
+ 327   4                                                         LED7 = OFF;
+ 328   4                                                         flag = 0;
+ 329   4                                 break;
+ 330   4                          case 6:LED0 = ON;
+ 331   4                                                     LED1 = ON;
+ 332   4                                                         LED2 = ON;
+ 333   4                                                         LED3 = ON;
+ 334   4                                                         LED4 = ON;
+ 335   4                                                         LED5 = ON;
+ 336   4                                                         LED6 = OFF;
+ 337   4                                                         LED7 = OFF;
+ 338   4                                                         flag = 0;
+ 339   4                                 break;
+ 340   4                          case 7:LED0 = ON;
+ 341   4                                                     LED1 = ON;
+ 342   4                                                         LED2 = ON;
+ 343   4                                                         LED3 = ON;
+ 344   4                                                         LED4 = ON;
+ 345   4                                                         LED5 = ON;
+ 346   4                                                         LED6 = ON;
+ 347   4                                                         LED7 = OFF;
+ 348   4                                                         flag = 0;
+ 349   4                                 break;
+ 350   4                          case 8:LED0 = ON;
+ 351   4                                                     LED1 = ON;
+ 352   4                                                         LED2 = ON;
+ 353   4                                                         LED3 = ON;
+ 354   4                                                         LED4 = ON;
+ 355   4                                                         LED5 = ON;
+ 356   4                                                         LED6 = ON;
+ 357   4                                                         LED7 = ON;
+ 358   4                                                         flag = 0;
+ 359   4                                 break;
+ 360   4                     }
+ 361   3                                 if(flag == 1)
+ 362   3                                 {
+ 363   4                                              Init_Timer0();
+ 364   4                                              while(1){
+ 365   5                                                      DelayMs(1); //延時1ms，累加頻率值
+C51 COMPILER V7.08   FINAL                                                                 06/18/2019 22:02:12 PAGE 7   
+
+ 366   5                                                      frq++;
+ 367   5                                                      count++;
+ 368   5                                                      if(count > 5000) break;
+ 369   5                                              }
+ 370   4                                              EA = 0;
+ 371   4                                              ET0 = 0;
+ 372   4                                              TR0 = 0;
+ 373   4                                              SPK = 0;
+ 374   4                                              flag = 0;
+ 375   4                                 }              
+ 376   3                   }
+ 377   2                      
+ 378   2      
+ 379   2                      if (BOT0 == ON)
+ 380   2              {
+ 381   3                              SBUF = 21;
+ 382   3                              while(TI == 0);
+ 383   3                              TI = 0;
+ 384   3                              while(BOT0 == ON);
+ 385   3                              
+ 386   3                              SBUF = 0x0;
+ 387   3                              while(TI == 0);
+ 388   3                              TI = 0;
+ 389   3      
+ 390   3              }
+ 391   2                      
+ 392   2               if (BOT1 == ON)
+ 393   2                      {
+ 394   3                              SBUF = 22;
+ 395   3                              while(TI == 0);
+ 396   3                              TI = 0;
+ 397   3                              while(BOT1 == ON);
+ 398   3                      
+ 399   3                              SBUF = 0x0;
+ 400   3                              while(TI == 0);
+ 401   3                              TI = 0;
+ 402   3                      
+ 403   3                      }
+ 404   2                      
+ 405   2               if (BOT2 == ON)
+ 406   2                      {
+ 407   3                              SBUF = 23;
+ 408   3                              while(TI == 0);
+ 409   3                              TI = 0;
+ 410   3                              while(BOT2 == ON);
+ 411   3                      
+ 412   3                              SBUF = 0x0;
+ 413   3                              while(TI == 0);
+ 414   3                              TI = 0;
+ 415   3                      
+ 416   3                      }
+ 417   2      
+ 418   2               if (BOT3 == ON)
+ 419   2                      {
+ 420   3                              SBUF = 24;
+ 421   3                              while(TI == 0);
+ 422   3                              TI = 0;
+ 423   3                              while(BOT3 == ON);
+ 424   3                      
+ 425   3                              SBUF = 0x0;
+ 426   3                              while(TI == 0);
+ 427   3                              TI = 0;
+C51 COMPILER V7.08   FINAL                                                                 06/18/2019 22:02:12 PAGE 8   
+
+ 428   3                      
+ 429   3                      }
+ 430   2      
+ 431   2              if (BOT4 == ON)
+ 432   2                      {
+ 433   3                              SBUF = 25;
+ 434   3                              while(TI == 0);
+ 435   3                              TI = 0;
+ 436   3                              while(BOT4 == ON);
+ 437   3                      
+ 438   3                              SBUF = 0x0;
+ 439   3                              while(TI == 0);
+ 440   3                              TI = 0;
+ 441   3                      
+ 442   3                      }
+ 443   2      
+ 444   2               if (BOT5 == ON)
+ 445   2                      {
+ 446   3                              SBUF = 26;
+ 447   3                              while(TI == 0);
+ 448   3                              TI = 0;
+ 449   3                              while(BOT5 == ON);
+ 450   3                      
+ 451   3                              SBUF = 0x0;
+ 452   3                              while(TI == 0);
+ 453   3                              TI = 0;
+ 454   3                      
+ 455   3                      }
+ 456   2      
+ 457   2               if (BOT6 == ON)
+ 458   2                      {
+ 459   3                              SBUF = 27;
+ 460   3                              while(TI == 0);
+ 461   3                              TI = 0;
+ 462   3                              while(BOT6 == ON);
+ 463   3                      
+ 464   3                              SBUF = 0x0;
+ 465   3                              while(TI == 0);
+ 466   3                              TI = 0;
+ 467   3                      
+ 468   3                      }
+ 469   2      
+ 470   2               if (BOT7 == ON)
+ 471   2                      {
+ 472   3                              SBUF = 28;
+ 473   3                              while(TI == 0);
+ 474   3                              TI = 0;
+ 475   3                              while(BOT7 == ON);
+ 476   3                      
+ 477   3                              SBUF = 0x0;
+ 478   3                              while(TI == 0);
+ 479   3                              TI = 0;
+ 480   3                      
+ 481   3                      }
+ 482   2              
+ 483   2              }
+ 484   1      
+ 485   1      }
+ 486          
+ 487          
+
+
+C51 COMPILER V7.08   FINAL                                                                 06/18/2019 22:02:12 PAGE 9   
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    702    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     19       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
